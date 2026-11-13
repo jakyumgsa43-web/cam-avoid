@@ -1,0 +1,166 @@
+<title>카메라 회피 보조</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* 레이아웃: 좁은 화면(폴드 접힘·세로)은 영상 위/패널 아래, 넓은 화면(펼침·가로)은 영상 왼쪽/패널 오른쪽 */
+:root{
+  --bg:#0c1115; --panel:#141b21; --panel2:#1a232b; --line:#273440; --fg:#e7eef3; --muted:#8e9ca8;
+  --accent:#5ab4ff; --go:#36d17c; --slow:#ffb020; --stop:#ff4d4f;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Samsung Sans","Noto Sans KR","Malgun Gothic",sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);margin:0}
+.app{display:flex;flex-direction:column;min-height:100%}
+.stage{position:relative;background:#000;display:flex;align-items:center;justify-content:center}
+#view{display:block;width:100%;height:auto;max-height:62vh;object-fit:contain;background:#000}
+.panel{padding-block:12px 28px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:14px;min-width:0}
+@media (min-width:760px){
+  body{overflow:hidden}
+  .app{flex-direction:row;height:100%}
+  .stage{flex:1 1 auto;min-width:0;height:100%}
+  #view{height:100%;max-height:none}
+  .panel{flex:0 0 360px;overflow-y:auto;height:100%;box-sizing:border-box;border-left:1px solid var(--line)}
+}
+.safety{position:absolute;left:8px;bottom:8px;font-size:10.5px;color:#ffe2a8;background:rgba(40,25,0,.72);border:1px solid rgba(255,176,32,.45);padding:4px 8px;border-radius:6px;pointer-events:none;width:fit-content;max-width:calc(100% - 16px)}
+.status{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;padding:3px 8px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);font-family:var(--mono)}
+.chip.ok{color:var(--go);border-color:rgba(54,209,124,.4)}
+.chip.warn{color:var(--slow);border-color:rgba(255,176,32,.4)}
+.chip.bad{color:var(--stop);border-color:rgba(255,77,79,.4)}
+.src{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+button,.filebtn{font:inherit;font-size:14px;color:var(--fg);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 8px;cursor:pointer;text-align:center;min-height:44px;box-sizing:border-box;display:flex;align-items:center;justify-content:center}
+button:hover,.filebtn:hover{border-color:var(--accent)}
+button:focus-visible,.filebtn:focus-within,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:#06121d;border-color:var(--accent);font-weight:700}
+.filebtn input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.msg{font-size:13px;line-height:1.5;color:#ffd6d6;background:rgba(255,77,79,.1);border:1px solid rgba(255,77,79,.35);border-radius:8px;padding:8px 10px}
+.decision{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.decision .act{grid-column:1/-1;font-size:22px;font-weight:800;letter-spacing:.02em}
+.decision .k{font-size:12px;color:var(--muted)}
+.decision .v{font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums;text-align:right}
+.riskbar{grid-column:1/-1;height:8px;border-radius:4px;background:var(--panel2);overflow:hidden}
+.riskbar>i{display:block;height:100%;width:0;background:var(--go);transition:width .15s}
+h2{font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:0 0 8px}
+.methods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.methods button{font-size:13px;padding:8px 6px;flex-direction:column;gap:2px}
+.methods button small{font-size:11px;color:var(--muted)}
+.methods button[aria-pressed="true"]{border-color:var(--accent);background:rgba(90,180,255,.14)}
+.desc{font-size:12.5px;line-height:1.55;color:var(--muted);margin:8px 0 0}
+#bev{display:block;width:100%;height:auto;aspect-ratio:1/1.05;max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.cmpwrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+td.n{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+tr.sel td{background:rgba(90,180,255,.08)}
+details{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:0 12px}
+summary{cursor:pointer;padding:12px 0;font-weight:700;font-size:14px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+.row label{font-size:13px}
+.row output{font-family:var(--mono);font-size:13px;color:var(--accent);font-variant-numeric:tabular-nums}
+.row input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--accent)}
+.row select{grid-column:1/-1;font:inherit;font-size:14px;background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px}
+.hint{font-size:12px;color:var(--muted);line-height:1.5;grid-column:1/-1}
+.foot{font-size:12px;color:var(--muted);line-height:1.6}
+@media (prefers-reduced-motion:reduce){.riskbar>i{transition:none}}
+</style>
+
+<div class="app">
+  <div class="stage">
+    <canvas id="view" width="1280" height="720" aria-label="카메라 영상과 인식 결과"></canvas>
+    <div class="safety">학습·표시용입니다. 실제 운전 판단이나 차량 제어에 쓰지 마세요.</div>
+  </div>
+
+  <div class="panel">
+    <div class="status">
+      <span class="chip" id="stSrc">데모</span>
+      <span class="chip warn" id="stModel">모델 준비 중</span>
+      <span class="chip" id="stFps">— fps</span>
+      <span class="chip" id="stInf">추론 — ms</span>
+    </div>
+
+    <div class="src">
+      <button class="primary" id="btnCam" type="button">후면 카메라 시작</button>
+      <button id="btnDemo" type="button">데모(가상 장애물)</button>
+      <label class="filebtn">영상 찍어서 분석<input id="fileRec" type="file" accept="video/*" capture="environment"></label>
+      <label class="filebtn">저장된 영상·사진 열기<input id="fileOpen" type="file" accept="video/*,image/*"></label>
+    </div>
+    <div class="msg" id="msg" hidden></div>
+
+    <div class="decision" aria-live="polite">
+      <div class="act" id="dAct">직진</div>
+      <span class="k">진행 방향 ψ</span><span class="v" id="dPsi">0.0°</span>
+      <span class="k">앞바퀴 조향각 δ</span><span class="v" id="dDelta">0.0°</span>
+      <span class="k">핸들 각도 (δ×조향비)</span><span class="v" id="dWheel">0°</span>
+      <span class="k">가장 가까운 경로 장애물</span><span class="v" id="dNear">—</span>
+      <span class="k">위험도</span><span class="v" id="dRisk">0.00</span>
+      <div class="riskbar"><i id="dBar"></i></div>
+    </div>
+
+    <section>
+      <h2>회피 방법</h2>
+      <div class="methods" role="group" aria-label="회피 방법 선택">
+        <button type="button" data-m="zone3" aria-pressed="true">3구역 최소 위험<small>좌·중·우 차로</small></button>
+        <button type="button" data-m="fan" aria-pressed="false">다방향 비용함수<small>-30°~+30° 탐색</small></button>
+        <button type="button" data-m="brake" aria-pressed="false">제동 우선 (TTC)<small>조향 없이 감속·정지</small></button>
+        <button type="button" data-m="apf" aria-pressed="false">가상 포텐셜필드<small>인력+척력 합</small></button>
+      </div>
+      <p class="desc" id="mDesc"></p>
+    </section>
+
+    <section>
+      <h2>위에서 본 모습 (조감도)</h2>
+      <canvas id="bev" width="640" height="672" aria-label="차량 기준 장애물 위치 조감도"></canvas>
+    </section>
+
+    <section>
+      <h2>4가지 방법 동시 비교</h2>
+      <div class="cmpwrap"><table>
+        <thead><tr><th>방법</th><th>판단</th><th style="text-align:right">ψ</th><th style="text-align:right">핸들</th><th style="text-align:right">위험</th></tr></thead>
+        <tbody id="cmp"></tbody>
+      </table></div>
+    </section>
+
+    <details open>
+      <summary>카메라 설정 (거리 정확도에 가장 중요)</summary>
+      <div class="row"><label for="sCamH">카메라 높이 (지면에서)</label><output id="oCamH"></output><input type="range" id="sCamH" min="0.2" max="2.5" step="0.05"></div>
+      <div class="row"><label for="sPitch">아래로 숙인 각도</label><output id="oPitch"></output><input type="range" id="sPitch" min="-10" max="35" step="0.5">
+        <span class="hint">화면의 점선(수평선)이 실제 먼 지평선·도로 소실점에 오도록 맞추세요.</span></div>
+      <div class="row"><label for="sFov">화각 (영상 긴 변 기준)</label><output id="oFov"></output><input type="range" id="sFov" min="40" max="110" step="1">
+        <span class="hint">기본 72°는 일반 광각 카메라 추정값입니다. 폴드7 실측값은 확인하지 못했습니다.</span></div>
+      <div class="row"><label for="sDist">거리 추정 방식</label><span></span>
+        <select id="sDist">
+          <option value="fuse">결합 (바닥 접점 + 크기)</option>
+          <option value="ground">바닥 접점 (박스 아래끝)</option>
+          <option value="size">물체 크기 (종류별 평균 높이)</option>
+        </select></div>
+    </details>
+
+    <details>
+      <summary>차량·판단 설정</summary>
+      <div class="row"><label for="sVehW">차폭</label><output id="oVehW"></output><input type="range" id="sVehW" min="0.5" max="2.6" step="0.05"></div>
+      <div class="row"><label for="sMargin">좌우 여유</label><output id="oMargin"></output><input type="range" id="sMargin" min="0" max="1.5" step="0.05"></div>
+      <div class="row"><label for="sWb">축간거리 L</label><output id="oWb"></output><input type="range" id="sWb" min="0.5" max="4" step="0.05"></div>
+      <div class="row"><label for="sRatio">조향비 (핸들/바퀴)</label><output id="oRatio"></output><input type="range" id="sRatio" min="8" max="20" step="0.5"></div>
+      <div class="row"><label for="sLook">전방 주시거리 Ld</label><output id="oLook"></output><input type="range" id="sLook" min="3" max="25" step="0.5"></div>
+      <div class="row"><label for="sZmax">관심 거리 (이보다 멀면 무시)</label><output id="oZmax"></output><input type="range" id="sZmax" min="8" max="60" step="1"></div>
+      <div class="row"><label for="sDstop">정지 거리</label><output id="oDstop"></output><input type="range" id="sDstop" min="1" max="15" step="0.5"></div>
+      <div class="row"><label for="sTtcB">제동 TTC</label><output id="oTtcB"></output><input type="range" id="sTtcB" min="0.5" max="4" step="0.1"></div>
+      <div class="row"><label for="sTtcW">주의 TTC</label><output id="oTtcW"></output><input type="range" id="sTtcW" min="1" max="8" step="0.1"></div>
+    </details>
+
+    <details>
+      <summary>인식 설정</summary>
+      <div class="row"><label for="sScore">최소 신뢰도</label><output id="oScore"></output><input type="range" id="sScore" min="0.2" max="0.9" step="0.05"></div>
+      <div class="row"><label for="sCls">인식 대상</label><span></span>
+        <select id="sCls">
+          <option value="all">모든 물체 (COCO 80종, 실내 시험용)</option>
+          <option value="road">도로 관련만 (사람·차·자전거·동물 등)</option>
+        </select></div>
+    </details>
+
+    <p class="foot">인식 모델: COCO-SSD (SSDLite MobileNet v2, 8비트 압축본, 파일 안에 포함). 거리는 카메라 한 대로 추정한 값이라 평평한 도로를 가정하며, 경사·요철·흔들림이 있으면 크게 틀릴 수 있습니다. TTC는 프레임 간 거리 변화로 구한 상대 접근 속도로 계산합니다.</p>
+  </div>
+</div>
