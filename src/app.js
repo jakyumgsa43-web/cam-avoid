@@ -3,6 +3,7 @@
    좌표: X 오른쪽(+), Z 전방(+), 카메라 기준 m. 진행각 ψ는 오른쪽(+). */
 (function(){
 const $ = s => document.querySelector(s);
+{ const ld = document.getElementById('loading'); if (ld) ld.hidden = true; }
 const DEG = Math.PI / 180;
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
